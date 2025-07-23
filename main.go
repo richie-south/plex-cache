@@ -334,7 +334,7 @@ func main() {
 		seasonMetadata, err := getSeasonMetadata(s, payload)
 
 		if err != nil {
-			log.Println("Failed to parse full episode response")
+			log.Println("Failed to parse full episode response", err)
 			http.Error(w, "Failed to parse full episode response", http.StatusBadRequest)
 			return
 		}
