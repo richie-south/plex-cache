@@ -314,7 +314,9 @@ func main() {
 		payload, err := parsePayload(r)
 
 		if err != nil {
+			log.Println("could not parse payload")
 			http.Error(w, "No payload found", http.StatusBadRequest)
+			return
 		}
 
 		if isAlreadyCached() {
@@ -332,7 +334,9 @@ func main() {
 		seasonMetadata, err := getSeasonMetadata(s, payload)
 
 		if err != nil {
+			log.Println("Failed to parse full episode response")
 			http.Error(w, "Failed to parse full episode response", http.StatusBadRequest)
+			return
 		}
 
 		episodesToCache := getEpisodeCache(payload, seasonMetadata)
