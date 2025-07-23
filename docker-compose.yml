@@ -6,11 +6,12 @@ services:
     volumes:
       - /mnt/media:/media
       - /mnt/cache:/cache
-
     ports:
       - "4001:4001"
     networks:
       - printer
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     working_dir: /app
     restart: unless-stopped
 
