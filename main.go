@@ -200,7 +200,7 @@ func parsePayload(r *http.Request) (Payload, error) {
 
 	err = json.Unmarshal([]byte(payloadStr), &payload)
 	if err != nil {
-		fmt.Println("Error decoding JSON:", err)
+		log.Println("Error decoding JSON:", err)
 	}
 
 	return payload, nil
@@ -277,9 +277,7 @@ func saveEpisodeCacheToRedis(rdb *redis.Client, episodesToCache []EpisodeCache) 
 }
 
 func main() {
-	fmt.Println("started")
-	dir, _ := os.Getwd()
-	log.Println("Working dir:", dir)
+	log.Println("Started")
 
 	err := godotenv.Load()
 	if err != nil {
@@ -292,6 +290,13 @@ func main() {
 		DB:       0,
 	})
 
+	_, err = rdb.Ping(ctx).Result()
+
+	if err != nil {
+		log.Fatalf("Error connecing to redis")
+		return
+	}
+
 	s := plexgo.New(
 		plexgo.WithSecurity(os.Getenv("PLEX_API_KEY")),
 		plexgo.WithIP(os.Getenv("PLEX_IP")),
@@ -301,7 +306,7 @@ func main() {
 	r := mux.NewRouter()
 
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("new request")
+		log.Println("Hook request")
 
 		payload, err := parsePayload(r)
 
@@ -310,11 +315,14 @@ func main() {
 		}
 
 		if isAlreadyCached() {
-			fmt.Fprintf(w, "ok")
+			log.Println("Already cached")
+			w.WriteHeader(http.StatusOK)
 			return
 		}
 
 		if !canCache(payload) {
+			log.Println("should not cache")
+			w.WriteHeader(http.StatusOK)
 			return
 		}
 
@@ -328,16 +336,19 @@ func main() {
 		err = saveEpisodeCacheToRedis(rdb, episodesToCache)
 
 		if err != nil {
-			fmt.Println("could not pipe to redis")
+			log.Println("could not pipe to redis")
 		}
 
 		err = copyEpisodes(episodesToCache)
 
 		if err != nil {
-			fmt.Println("could move files", err)
+			log.Println("could not move files", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 
-		fmt.Fprintf(w, "You've requested me ")
+		log.Println("request ok")
+		w.WriteHeader(http.StatusOK)
 	}).Methods("POST")
 
 	http.ListenAndServe(":4001", r)
