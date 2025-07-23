@@ -240,7 +240,7 @@ func getEpisodeCache(payload Payload, seasonMetadata SeasonMetadataResponse) []E
 	for _, item := range seasonMetadata.MediaContainer.Metadata {
 		if item.Index >= startIndex && item.Index <= endIndex {
 
-			episodesToCache = append(episodesToCache, EpisodeCache{
+			tmp := EpisodeCache{
 				RatingKey:            item.RatingKey,
 				ParentRatingKey:      item.ParentRatingKey,
 				GrandparentRatingKey: item.GrandparentRatingKey,
@@ -249,7 +249,10 @@ func getEpisodeCache(payload Payload, seasonMetadata SeasonMetadataResponse) []E
 				ParentIndex:          item.ParentIndex,
 				EpisodeFilePath:      formatEpisodePath(item.Media[0].Part[0].File),
 				SrtFilePaths:         getSrtPaths(formatEpisodePath(item.Media[0].Part[0].File), item.Media[0].Part[0].Container, item.Media[0].Part[0].Stream),
-			})
+			}
+
+			episodesToCache = append(episodesToCache, tmp)
+
 		}
 	}
 
@@ -348,7 +351,6 @@ func main() {
 		}
 
 		log.Println("request ok")
-		w.WriteHeader(http.StatusOK)
 	}).Methods("POST")
 
 	http.ListenAndServe(":4001", r)
@@ -397,6 +399,9 @@ func copyEpisodes(episodesToCache []EpisodeCache) error {
 	destination := "/cache"
 
 	for _, item := range episodesToCache {
+		log.Print("copy", item.EpisodeFilePath)
+		log.Print(" to", destination+item.EpisodeFilePath)
+
 		err := CopyFile(item.EpisodeFilePath, destination+item.EpisodeFilePath)
 
 		if err != nil {
