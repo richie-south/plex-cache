@@ -156,7 +156,7 @@ type PlexSearchResponse struct {
 	}
 }
 
-func isCacheEvent(payload Payload) bool {
+func isCacheableEvent(payload Payload) bool {
 	return payload.Event == "media.resume" || payload.Event == "media.play"
 }
 
@@ -164,12 +164,13 @@ func isShow(payload Payload) bool {
 	return payload.Metadata.LibrarySectionType == "show"
 }
 
+// skipping first episode of season 1 to be sure user likes serie
 func isCacheableEpisode(payload Payload) bool {
 	return payload.Metadata.ParentIndex != 1 && payload.Metadata.Index != 1
 }
 
 func canCache(payload Payload) bool {
-	if !isCacheEvent(payload) || !isShow(payload) || !isCacheableEpisode(payload) {
+	if !isCacheableEvent(payload) || !isShow(payload) || !isCacheableEpisode(payload) {
 		return false
 	}
 
