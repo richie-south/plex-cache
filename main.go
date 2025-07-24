@@ -173,16 +173,29 @@ func isShow(payload Payload) bool {
 	return payload.Metadata.LibrarySectionType == "show"
 }
 
+func isCacheableEpisode(payload Payload) bool {
+	return payload.Metadata.ParentIndex != 1 && payload.Metadata.Index != 1
+}
+
 func canCache(payload Payload) bool {
-	if !isCacheEvent(payload) || !isShow(payload) {
+	if !isCacheEvent(payload) || !isShow(payload) || !isCacheableEpisode(payload) {
 		return false
 	}
 
 	return true
 }
 
-func isAlreadyCached() bool {
-	return false
+func isAlreadyCached(rdb *redis.Client, payload Payload) bool {
+	_, err := rdb.Get(ctx, payload.Metadata.RatingKey).Result()
+
+	if err == redis.Nil {
+		return false
+	} else if err != nil {
+		log.Println("Error retriving from redis", err)
+		return false
+	}
+
+	return true
 }
 
 func parsePayload(r *http.Request) (Payload, error) {
@@ -319,7 +332,7 @@ func main() {
 			return
 		}
 
-		if isAlreadyCached() {
+		if isAlreadyCached(rdb, payload) {
 			log.Println("Already cached")
 			w.WriteHeader(http.StatusOK)
 			return
