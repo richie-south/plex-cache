@@ -374,7 +374,7 @@ func main() {
 	_, err = rdb.Ping(ctx).Result()
 
 	if err != nil {
-		log.Fatalf("Error connecing to redis")
+		log.Fatalf("Error connecing to redis %e", err)
 		return
 	}
 
