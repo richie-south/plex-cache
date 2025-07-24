@@ -3,6 +3,7 @@ version: "3.9"
 services:
   plexcache:
     build: .
+    container_name: plex-cache
     volumes:
       - /mnt/media:/media
       - /mnt/cache:/cache
