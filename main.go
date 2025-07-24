@@ -403,8 +403,8 @@ func copyEpisodes(episodesToCache []EpisodeCache) error {
 	destination := "/cache"
 
 	for _, item := range episodesToCache {
-		log.Print("copy", item.EpisodeFilePath)
-		log.Print(" to", destination+item.EpisodeFilePath)
+		log.Print("copy: ", item.EpisodeFilePath)
+		log.Print("to: ", destination+item.EpisodeFilePath)
 
 		err := CopyFile(item.EpisodeFilePath, destination+item.EpisodeFilePath)
 
@@ -413,7 +413,9 @@ func copyEpisodes(episodesToCache []EpisodeCache) error {
 		}
 
 		for _, srtPath := range item.SrtFilePaths {
-			err := CopyFile("~"+srtPath, destination+srtPath)
+			log.Print("copy srt: ", srtPath)
+			log.Print("to: ", destination+srtPath)
+			err := CopyFile(srtPath, destination+srtPath)
 
 			if err != nil {
 				return fmt.Errorf("failed to copy %x", srtPath)
