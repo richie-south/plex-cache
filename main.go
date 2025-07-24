@@ -156,15 +156,6 @@ type PlexSearchResponse struct {
 	}
 }
 
-func printStruct(payload Payload) {
-	bytes, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		fmt.Println("Error marshaling struct:", err)
-		return
-	}
-	fmt.Println(string(bytes))
-}
-
 func isCacheEvent(payload Payload) bool {
 	return payload.Event == "media.resume" || payload.Event == "media.play"
 }
@@ -186,12 +177,23 @@ func canCache(payload Payload) bool {
 }
 
 func isAlreadyCached(rdb *redis.Client, payload Payload) bool {
-	_, err := rdb.Get(ctx, payload.Metadata.RatingKey).Result()
+	storedValue, err := rdb.Get(ctx, payload.Metadata.RatingKey).Result()
 
 	if err == redis.Nil {
 		return false
 	} else if err != nil {
 		log.Println("Error retriving from redis", err)
+		return false
+	}
+
+	var episodeCache EpisodeCache
+	if err := json.Unmarshal([]byte(storedValue), &episodeCache); err != nil {
+		return false
+	}
+
+	// basic bypass, if this is last cached episode allow for more to be cached
+	// does not handle case of multible starting points in a series
+	if episodeCache.IsLast {
 		return false
 	}
 
@@ -262,6 +264,7 @@ func getEpisodeCache(payload Payload, seasonMetadata SeasonMetadataResponse) []E
 				ParentIndex:          item.ParentIndex,
 				EpisodeFilePath:      formatEpisodePath(item.Media[0].Part[0].File),
 				SrtFilePaths:         getSrtPaths(formatEpisodePath(item.Media[0].Part[0].File), item.Media[0].Part[0].Container, item.Media[0].Part[0].Stream),
+				IsLast:               item.Index == endIndex,
 			}
 
 			episodesToCache = append(episodesToCache, tmp)
@@ -282,7 +285,7 @@ func saveEpisodeCacheToRedis(rdb *redis.Client, episodesToCache []EpisodeCache) 
 		}
 
 		pipe.Set(ctx, item.RatingKey, marshaled, -1)
-		pipe.Set(ctx, fmt.Sprintf("%s %s", item.RatingKey, ":plex-expirer"), "", ttl)
+		pipe.Set(ctx, fmt.Sprintf("%s%s", item.RatingKey, ":plex-expirer"), "", ttl)
 	}
 	_, err := pipe.Exec(ctx)
 
@@ -660,4 +663,5 @@ type EpisodeCache struct {
 	ParentIndex          int      `json:"parentIndex"`
 	EpisodeFilePath      string   `json:"episodeFilePath"`
 	SrtFilePaths         []string `json:"srtFilePaths"`
+	IsLast               bool     `json:"isLast"`
 }
