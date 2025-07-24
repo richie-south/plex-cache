@@ -302,57 +302,59 @@ func deleteExpiredEpisodeFromCache(rdb *redis.Client) *redis.PubSub {
 	location := "/cache"
 
 	subscriber := rdb.PSubscribe(ctx, "__keyevent@0__:expired")
-	defer subscriber.Close()
+	go func() {
+		defer subscriber.Close()
 
-	for msg := range subscriber.Channel() {
+		for msg := range subscriber.Channel() {
 
-		if !s.HasSuffix(msg.Payload, plexExpirerKey) {
-			continue
-		}
-
-		dataKey := s.Split(msg.Payload, plexExpirerKey)[0]
-		log.Println("Time to remove", dataKey)
-		storedValue, err := rdb.Get(ctx, dataKey).Result()
-
-		if err == redis.Nil {
-			log.Println("redis.Nil", err)
-			continue
-		} else if err != nil {
-			log.Println("Error retriving key to delete from redis", err)
-			continue
-		}
-
-		var episodeCache EpisodeCache
-		if err := json.Unmarshal([]byte(storedValue), &episodeCache); err != nil {
-			continue
-		}
-
-		err = RemoveFile(location + episodeCache.EpisodeFilePath)
-		log.Println("Removed", episodeCache.EpisodeFilePath)
-
-		if err != nil {
-			log.Println("failed to remove file", err)
-			continue
-		}
-
-		for _, srtPath := range episodeCache.SrtFilePaths {
-			err = RemoveFile(location + srtPath)
-			log.Println("Removed srt", srtPath)
-
-			if err != nil {
-				log.Println("failed to remove srt", err)
+			if !s.HasSuffix(msg.Payload, plexExpirerKey) {
 				continue
 			}
+
+			dataKey := s.Split(msg.Payload, plexExpirerKey)[0]
+			log.Println("Time to remove", dataKey)
+			storedValue, err := rdb.Get(ctx, dataKey).Result()
+
+			if err == redis.Nil {
+				log.Println("redis.Nil", err)
+				continue
+			} else if err != nil {
+				log.Println("Error retriving key to delete from redis", err)
+				continue
+			}
+
+			var episodeCache EpisodeCache
+			if err := json.Unmarshal([]byte(storedValue), &episodeCache); err != nil {
+				continue
+			}
+
+			err = RemoveFile(location + episodeCache.EpisodeFilePath)
+			log.Println("Removed", episodeCache.EpisodeFilePath)
+
+			if err != nil {
+				log.Println("failed to remove file", err)
+				continue
+			}
+
+			for _, srtPath := range episodeCache.SrtFilePaths {
+				err = RemoveFile(location + srtPath)
+				log.Println("Removed srt", srtPath)
+
+				if err != nil {
+					log.Println("failed to remove srt", err)
+					continue
+				}
+			}
+
+			err = rdb.Del(ctx, dataKey).Err()
+
+			if err != nil {
+				log.Println("failed to remove dataKey from redis", err)
+				continue
+			}
+
 		}
-
-		err = rdb.Del(ctx, dataKey).Err()
-
-		if err != nil {
-			log.Println("failed to remove dataKey from redis", err)
-			continue
-		}
-
-	}
+	}()
 
 	return subscriber
 }
