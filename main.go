@@ -281,7 +281,8 @@ func saveEpisodeCacheToRedis(rdb *redis.Client, episodesToCache []EpisodeCache) 
 			fmt.Println("could not marshal episode")
 		}
 
-		pipe.Set(ctx, item.RatingKey, marshaled, ttl)
+		pipe.Set(ctx, item.RatingKey, marshaled, -1)
+		pipe.Set(ctx, fmt.Sprintf("%s %s", item.RatingKey, ":plex-expirer"), "", ttl)
 	}
 	_, err := pipe.Exec(ctx)
 
@@ -290,6 +291,66 @@ func saveEpisodeCacheToRedis(rdb *redis.Client, episodesToCache []EpisodeCache) 
 	}
 
 	return nil
+}
+
+func deleteExpiredEpisodeFromCache(rdb *redis.Client) *redis.PubSub {
+	plexExpirerKey := ":plex-expirer"
+	location := "/cache"
+
+	subscriber := rdb.PSubscribe(ctx, "__keyevent@0__:expired")
+	defer subscriber.Close()
+
+	for msg := range subscriber.Channel() {
+
+		if !s.HasSuffix(msg.Payload, plexExpirerKey) {
+			continue
+		}
+
+		dataKey := s.Split(msg.Payload, plexExpirerKey)[0]
+		log.Println("Time to remove", dataKey)
+		storedValue, err := rdb.Get(ctx, dataKey).Result()
+
+		if err == redis.Nil {
+			log.Println("redis.Nil", err)
+			continue
+		} else if err != nil {
+			log.Println("Error retriving key to delete from redis", err)
+			continue
+		}
+
+		var episodeCache EpisodeCache
+		if err := json.Unmarshal([]byte(storedValue), &episodeCache); err != nil {
+			continue
+		}
+
+		err = RemoveFile(location + episodeCache.EpisodeFilePath)
+		log.Println("Removed", episodeCache.EpisodeFilePath)
+
+		if err != nil {
+			log.Println("failed to remove file", err)
+			continue
+		}
+
+		for _, srtPath := range episodeCache.SrtFilePaths {
+			err = RemoveFile(location + srtPath)
+			log.Println("Removed srt", srtPath)
+
+			if err != nil {
+				log.Println("failed to remove srt", err)
+				continue
+			}
+		}
+
+		err = rdb.Del(ctx, dataKey).Err()
+
+		if err != nil {
+			log.Println("failed to remove dataKey from redis", err)
+			continue
+		}
+
+	}
+
+	return subscriber
 }
 
 func main() {
@@ -312,6 +373,9 @@ func main() {
 		log.Fatalf("Error connecing to redis")
 		return
 	}
+
+	subscriber := deleteExpiredEpisodeFromCache(rdb)
+	defer subscriber.Close()
 
 	s := plexgo.New(
 		plexgo.WithSecurity(os.Getenv("PLEX_API_KEY")),
@@ -412,6 +476,23 @@ func CopyFile(src, dst string) error {
 	return out.Sync()
 }
 
+func RemoveFile(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	if info.IsDir() {
+		return fmt.Errorf("path %s is a directory, not a file", path)
+	}
+
+	return os.Remove(path)
+}
+
 func copyEpisodes(episodesToCache []EpisodeCache) error {
 	destination := "/cache"
 
@@ -422,7 +503,7 @@ func copyEpisodes(episodesToCache []EpisodeCache) error {
 		err := CopyFile(item.EpisodeFilePath, destination+item.EpisodeFilePath)
 
 		if err != nil {
-			return fmt.Errorf("failed to copy %x", item.Title)
+			return fmt.Errorf("failed to copy %s", item.Title)
 		}
 
 		for _, srtPath := range item.SrtFilePaths {
@@ -431,7 +512,7 @@ func copyEpisodes(episodesToCache []EpisodeCache) error {
 			err := CopyFile(srtPath, destination+srtPath)
 
 			if err != nil {
-				return fmt.Errorf("failed to copy %x", srtPath)
+				return fmt.Errorf("failed to copy %s", srtPath)
 			}
 		}
 
