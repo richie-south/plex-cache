@@ -18,6 +18,7 @@ import (
 )
 
 func isCacheableEvent(payload models.Payload) bool {
+	log.Println("payload event", payload.Event)
 	return payload.Event == "media.resume" || payload.Event == "media.play"
 }
 
